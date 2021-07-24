@@ -220,14 +220,6 @@ def model_fn(model_dir):
     return model
 
 
-def input_fn(request_body, content_type='application/python-pickle'):
-    if content_type == 'application/python-pickle':
-        image_data = np.array(Image.open(request_body).convert('RGB'))
-        return image_data
-    else:
-        raise Exception(f'Unsupported content type: {content_type}')
-
-
 def predict_fn(input_data, model):
     return model.predict(input_data)
 
