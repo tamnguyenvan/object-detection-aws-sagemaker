@@ -1,4 +1,5 @@
 import os
+import io
 import torch
 import torch.nn as nn
 import torchvision
@@ -6,7 +7,7 @@ import torchvision.transforms as transforms
 
 
 classes = ['background', 'stitch']
-device = 'cuda'if torch.cuda.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class FastRCNNPredictor(nn.Module):
@@ -41,10 +42,20 @@ def model_fn(model_dir):
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # Replace the pre-trained head with a new one (note: +1 because of the __background__ class)
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, len(classes))
-    model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pth'), map_location=device))
+    model.load_state_dict(torch.load(os.path.join(model_dir, 'my_model', 'model.pth'), map_location=device))
     model.to(device)
 
     return model
+
+
+def input_fn(request_body, request_content_type):
+    """An input_fn that loads a pickled tensor"""
+    if request_content_type == 'application/octet-stream':
+        return torch.load(io.BytesIO(request_body))
+    else:
+        # Handle other content-types here or raise an Exception
+        # if the content type is not supported.
+        raise Exception(f'Unsupported content type: {request_content_type}')
 
 
 def predict_fn(input_data, model):
@@ -52,11 +63,19 @@ def predict_fn(input_data, model):
     model.to(device)
 
     with torch.no_grad():
-        defaults = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])]
-        )
+        if isinstance(input_data, torch.Tensor):
+            input_data = input_data.permute((2, 0, 1)).contiguous()
+            input_data = input_data.float()
+            defaults = transforms.Compose([
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])]
+            )
+        else:
+            defaults = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])]
+            )
         images = defaults(input_data)
         images = images.to(device)
 
