@@ -5,7 +5,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 
-classes = ['stitch']
+classes = ['background', 'stitch']
 device = 'cuda'if torch.cuda.is_available() else 'cpu'
 
 
@@ -36,12 +36,12 @@ class FastRCNNPredictor(nn.Module):
 
 def model_fn(model_dir):
     # Load a model pre-trained on COCO
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=False)
-    model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pth'), map_location=device))
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
 
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # Replace the pre-trained head with a new one (note: +1 because of the __background__ class)
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, len(classes) + 1)
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, len(classes))
+    model.load_state_dict(torch.load(os.path.join(model_dir, 'model.pth'), map_location=device))
     model.to(device)
 
     return model
@@ -49,20 +49,25 @@ def model_fn(model_dir):
 
 def predict_fn(input_data, model):
     model.eval()
+    model.to(device)
 
     with torch.no_grad():
-        defaults = transforms.Compose([transforms.ToTensor()])
+        defaults = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])]
+        )
         images = defaults(input_data)
         images = images.to(device)
 
-        preds = model(images)
+        preds = model([images])
         # Send predictions to CPU if not already
         preds = [{k: v.to(torch.device('cpu')) for k, v in p.items()} for p in preds]
     
     results = []
     for pred in preds:
         # Convert predicted ints into their corresponding string labels
-        result = ([classes[val] for val in pred['labels']], pred['boxes'], pred['scores'])
+        result = ([classes[val] for val in pred['labels']], pred['boxes'].numpy().tolist(), pred['scores'].numpy().tolist())
         results.append(result)
 
     return results[0]
