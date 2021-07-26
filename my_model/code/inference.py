@@ -5,6 +5,8 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 
+from PIL import Image
+
 
 classes = ['background', 'stitch']
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -51,7 +53,7 @@ def model_fn(model_dir):
 def input_fn(request_body, request_content_type):
     """An input_fn that loads a pickled tensor"""
     if request_content_type == 'application/octet-stream':
-        return torch.load(io.BytesIO(request_body))
+        return Image.open(io.BytesIO(request_body)).convert('RGB')
     else:
         # Handle other content-types here or raise an Exception
         # if the content type is not supported.
